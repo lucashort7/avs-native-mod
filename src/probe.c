@@ -1,4 +1,6 @@
 #include "probe.h"
+/* Historical retention-only implementation. Production uses bridge.c instead.
+ * This object is linked solely into hook_fixture for baseline regressions. */
 #include "logger.h"
 #include "inventory.h"
 #include "MinHook.h"

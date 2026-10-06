@@ -27,7 +27,7 @@ if errorlevel 1 (
 cmake --preset mingw || goto :fail
 cmake --build --preset mingw || goto :fail
 ctest --preset mingw || goto :fail
-echo built build\cmake\avs-native-mod.dll; all fixtures passed; no game injection
+echo built build\cmake\avs-bridge.dll and reloadable avs-native-mod.dll; all fixtures passed; no game injection
 popd
 exit /b 0
 :fail

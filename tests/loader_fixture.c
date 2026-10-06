@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 int main(void) {
-    HMODULE module = LoadLibraryW(L".\\avs-native-mod.dll");
+    HMODULE module = LoadLibraryW(L".\\avs-bridge.dll");
     if (!module) {
         fprintf(stderr, "FAIL: LoadLibrary error=%lu\n", GetLastError());
         return 1;
@@ -27,7 +27,11 @@ int main(void) {
         fprintf(stderr, "FAIL: expected host rejection, got status=%lu\n", status);
         return 1;
     }
-    puts("PASS: built DLL loads and refuses the non-AVS test host before creating a hook");
-    /* The DLL is pinned; process exit is its cleanup boundary. */
+    if (GetModuleHandleW(L"avs-native-mod.dll")) {
+        fputs("FAIL: wrong host loaded observation payload\n", stderr);
+        return 1;
+    }
+    puts("PASS: resident bridge refuses non-AVS host before creating a hook or loading payload");
+    /* The bridge is pinned; process exit is its cleanup boundary. */
     return 0;
 }

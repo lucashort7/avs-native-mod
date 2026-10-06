@@ -17,7 +17,7 @@ typedef struct inventory_stats {
     LONG unique;
 } inventory_stats;
 
-/* One capture per process. Pointers are opaque, provisional identity keys. */
+/* One capture per payload mapping. Pointers are opaque, provisional identity keys. */
 void inventory_observe(const probe_sample *sample);
 BOOL inventory_get(unsigned index, inventory_entry *entry);
 inventory_stats inventory_totals(void);

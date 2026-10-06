@@ -1,156 +1,114 @@
-#include "probe.h"
+#include "payload.h"
+#include "inventory.h"
 #include "logger.h"
-#include <stdint.h>
-#include <strsafe.h>
-#include <wchar.h>
 
-static HMODULE g_module;
-static volatile LONG g_status;
+static BOOL g_logged[INVENTORY_CAPACITY];
+static LONG64 g_reported[INVENTORY_CAPACITY];
+static unsigned long long g_interval;
+static BOOL g_failed;
+static BOOL g_started;
+#ifndef AVS_PAYLOAD_GENERATION
+#define AVS_PAYLOAD_GENERATION 1
+#endif
+#ifdef AVS_PAYLOAD_TESTING
+static HANDLE g_entered, g_release;
+static volatile LONG g_pause;
+static BOOL WINAPI zero_write(HANDLE file, LPCVOID text, DWORD size, LPDWORD written, LPOVERLAPPED overlap) {
+    (void)file;
+    (void)text;
+    (void)size;
+    (void)overlap;
+    *written = 0;
+    return TRUE;
+}
+__declspec(dllexport) void WINAPI avs_payload_fixture_fail_flush(void) { logger_test_set_writer(zero_write); }
+__declspec(dllexport) void WINAPI avs_payload_fixture_pause(HANDLE entered, HANDLE release) {
+    g_entered = entered;
+    g_release = release;
+    InterlockedExchange(&g_pause, 1);
+}
+#endif
 
-/* Measured from the installed executable, not copied from engine source. */
-#define TARGET_RVA 0x58c370u
-#define TARGET_TIMESTAMP 0x6a555660u
-#define TARGET_IMAGE_SIZE 0x69a1000u
-static const unsigned char target_entry[] = {0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x57, 0x56,
-                                             0x53, 0x48, 0x81, 0xec, 0x58, 0x02, 0x00, 0x00, 0x48, 0x8d, 0xac,
-                                             0x24, 0x80, 0x00, 0x00, 0x00, 0x48, 0x89, 0x8d, 0x20, 0x02};
-
-__declspec(dllexport) DWORD WINAPI script_probe_status(void) {
-    return (DWORD)InterlockedCompareExchange(&g_status, 0, 0);
+__declspec(dllexport) BOOL WINAPI avs_payload_start(const wchar_t *directory, const wchar_t *name) {
+    DWORD saved = GetLastError();
+    BOOL ok = !g_started && logger_init(directory, name);
+    if (ok) {
+        g_started = TRUE;
+        ok = wlog("capture start: generation=%d", AVS_PAYLOAD_GENERATION);
+    }
+    SetLastError(saved);
+    return ok;
 }
 
-static DWORD finish(LONG status) {
-    if (!logger_close())
-        status = 4;
-    InterlockedExchange(&g_status, status);
-    return (DWORD)status;
+/* Observation only. Never call the target, original, bridge or another observer. */
+__declspec(dllexport) void WINAPI avs_payload_observe(const probe_sample *sample) {
+    DWORD saved = GetLastError();
+#ifdef AVS_PAYLOAD_TESTING
+    if (InterlockedExchange(&g_pause, 0)) {
+        SetEvent(g_entered);
+        WaitForSingleObject(g_release, INFINITE);
+    }
+#endif
+    inventory_observe(sample);
+    SetLastError(saved);
 }
 
-/* 0 = absent, 1 = regular file, -1 = unsafe or inaccessible. */
-static int flag_state(const wchar_t *path) {
-    DWORD attrs = GetFileAttributesW(path);
-    if (attrs != INVALID_FILE_ATTRIBUTES)
-        return (attrs & FILE_ATTRIBUTE_DIRECTORY) ? -1 : 1;
-    DWORD error = GetLastError();
-    return (error == ERROR_FILE_NOT_FOUND) ? 0 : -1;
+__declspec(dllexport) BOOL WINAPI avs_payload_flush(void) {
+    DWORD saved = GetLastError();
+    BOOL ok = g_started && !g_failed;
+    if (ok)
+        ++g_interval;
+    for (unsigned i = 0; ok && i < INVENTORY_CAPACITY; ++i) {
+        inventory_entry entry;
+        if (g_logged[i] || !inventory_get(i, &entry))
+            continue;
+        probe_sample *s = &entry.first;
+        ok = wlog("first_seen function_object=%p instance=%p argc=%d state=%p result=%p args=%p error=%p", s->function,
+                  s->instance, s->count, s->state, s->result, (const void *)s->args, s->error);
+        if (ok)
+            g_logged[i] = TRUE;
+    }
+    for (unsigned i = 0; ok && i < INVENTORY_CAPACITY; ++i) {
+        inventory_entry entry;
+        if (!inventory_get(i, &entry) || entry.calls <= g_reported[i])
+            continue;
+        LONG64 delta = entry.calls - g_reported[i];
+        ok = wlog("function_delta interval=%llu function_object=%p calls_in_interval=%llu", g_interval,
+                  entry.first.function, (unsigned long long)delta);
+        if (ok)
+            g_reported[i] = entry.calls;
+    }
+    if (ok)
+        ok = logger_flush();
+    if (!ok)
+        g_failed = TRUE;
+    SetLastError(saved);
+    return ok;
 }
 
-static BOOL consume_flag(const wchar_t *path) { return DeleteFileW(path) && flag_state(path) == 0; }
-
-static DWORD WINAPI worker(LPVOID context) {
-    (void)context;
-    /* Pin before any hook resources exist: generic ejectors cannot free our code. */
-    HMODULE pinned;
-    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
-                            (LPCWSTR)(uintptr_t)worker, &pinned))
-        return finish(4);
-    static wchar_t directory[MAX_PATH];
-    wchar_t path[MAX_PATH];
-    DWORD n = GetModuleFileNameW(g_module, directory, ARRAYSIZE(directory));
-    if (!n || n >= ARRAYSIZE(directory))
-        return finish(4);
-    wchar_t *slash = wcsrchr(directory, L'\\');
-    if (!slash)
-        return finish(4);
-    slash[1] = L'\0';
-    if (!logger_init(directory, L"avs-native-mod"))
-        return finish(4);
-    if (!wlog("attached pid=%lu; DLL pinned until process exit; candidate ABI not yet runtime-confirmed",
-              (unsigned long)GetCurrentProcessId()) ||
-        !logger_flush())
-        return finish(4);
-
-    n = GetModuleFileNameW(NULL, path, ARRAYSIZE(path));
-    if (!n || n >= ARRAYSIZE(path))
-        return finish(4);
-    slash = wcsrchr(path, L'\\');
-    if (!slash || _wcsicmp(slash + 1, L"AVS03Pro.exe") != 0) {
-        wlog("host mismatch; no hook");
-        return finish(3);
+__declspec(dllexport) BOOL WINAPI avs_payload_stop(void) {
+    DWORD saved = GetLastError();
+    inventory_close();
+    BOOL ok = avs_payload_flush();
+    for (unsigned i = 0; ok && i < INVENTORY_CAPACITY; ++i) {
+        inventory_entry entry;
+        if (inventory_get(i, &entry))
+            ok = wlog("function_total function_object=%p calls=%llu", entry.first.function,
+                      (unsigned long long)entry.calls);
     }
-    BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-    if (!base)
-        return finish(4);
-    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)base;
-    if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0 || dos->e_lfanew > 0x1000)
-        return finish(4);
-    const IMAGE_NT_HEADERS64 *nt = (const IMAGE_NT_HEADERS64 *)(base + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
-        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC || nt->FileHeader.TimeDateStamp != TARGET_TIMESTAMP ||
-        nt->OptionalHeader.SizeOfImage != TARGET_IMAGE_SIZE) {
-        wlog("build mismatch; no hook");
-        return finish(4);
-    }
-    wchar_t enable_path[MAX_PATH], stop_path[MAX_PATH];
-    if (FAILED(StringCchPrintfW(enable_path, ARRAYSIZE(enable_path), L"%lsavs-native-mod.enable", directory)) ||
-        FAILED(StringCchPrintfW(stop_path, ARRAYSIZE(stop_path), L"%lsavs-native-mod.stop", directory)))
-        return finish(4);
-    if (flag_state(enable_path) != 0 || flag_state(stop_path) != 0) {
-        wlog("stale or inaccessible control flag; refusing to prepare");
-        return finish(4);
-    }
-    if (!probe_prepare(base + TARGET_RVA, target_entry, sizeof target_entry))
-        return finish(4);
-    if (!wlog("prepared DISABLED target=%p rva=0x%x; waiting up to 300 seconds for .enable or .stop", base + TARGET_RVA,
-              TARGET_RVA) ||
-        !logger_flush()) {
-        probe_release_disabled();
-        return finish(4);
-    }
-    InterlockedExchange(&g_status, 1);
-    BOOL requested = FALSE;
-    /* A bounded native watcher; no CLI subprocess polling. */
-    ULONGLONG waiting_since = GetTickCount64();
-    while (GetTickCount64() - waiting_since < 300000) {
-        int stop = flag_state(stop_path);
-        int enable = flag_state(enable_path);
-        if (stop < 0 || enable < 0) {
-            probe_release_disabled();
-            return finish(4);
-        }
-        if (stop) {
-            BOOL consumed = consume_flag(stop_path);
-            BOOL released = probe_release_disabled();
-            BOOL ok = consumed && released;
-            wlog("cancelled before activation; resources released=%d; DLL remains pinned", released);
-            return finish(ok ? 6 : 4);
-        }
-        if (enable) {
-            requested = consume_flag(enable_path);
-            break;
-        }
-        Sleep(250);
-    }
-    if (!requested) {
-        BOOL ok = probe_release_disabled();
-        wlog("no activation request consumed; disabled resources released=%d", ok);
-        return finish(ok ? 5 : 4);
-    }
-    BOOL enabled = probe_enable();
-    BOOL healthy =
-        enabled &&
-        wlog("continuous inventory active: first-seen function keys; repeat counters; flush_ms=2000; stop via .stop") &&
-        logger_flush();
-    if (healthy) {
-        InterlockedExchange(&g_status, 7);
-        healthy = probe_run_capture(stop_path, 2000);
-    }
-    BOOL stopped = probe_stop();
-    /* Freeze metadata separately: disable does not cancel in-flight originals. */
-    BOOL drained = probe_write_inventory(TRUE);
-    BOOL reported = wlog("capture end: stopped=%d inventory_flushed=%d; DLL and trampoline RETAINED; do not eject",
-                         stopped, drained);
-    return finish(healthy && stopped && drained && reported ? 2 : 4);
+    inventory_stats stats = inventory_totals();
+    if (ok)
+        ok = wlog("inventory end: observed=%llu unique=%ld untracked_calls=%llu; pointer identity is capture-scoped",
+                  (unsigned long long)stats.observed, stats.unique, (unsigned long long)stats.untracked);
+    BOOL closed = logger_close();
+    SetLastError(saved);
+    return ok && closed;
 }
 
 BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID reserved) {
+    (void)module;
+    (void)reason;
     (void)reserved;
-    if (reason == DLL_PROCESS_ATTACH) {
-        g_module = module;
-        HANDLE thread = CreateThread(NULL, 0, worker, NULL, 0, NULL);
-        if (!thread)
-            return FALSE;
-        CloseHandle(thread);
-    }
+    /* No threads, locks, pinning, hooks, callbacks or I/O under loader lock. */
     return TRUE;
 }
