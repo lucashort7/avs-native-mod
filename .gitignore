@@ -53,3 +53,26 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Build output and local runtime controls
+/build/
+*.log
+*.enable
+*.stop
+*.unload
+*.cache
+
+# Local credentials and editor state
+.env
+.env.*
+.vscode/
+.idea/
+
+# Never distribute game resources or recovered game code
+*.pck
+*.gd
+*.gdc
+*.tscn
+*.tres
+*.zip
+/investigation/
