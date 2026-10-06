@@ -29,5 +29,9 @@ BOOL probe_release_disabled(void);
 BOOL probe_retained(void);
 LONG64 probe_call_count(void);
 BOOL probe_get_sample(unsigned index, probe_sample *sample);
+/* Single writer only. final freezes metadata and emits occurrence totals. */
+BOOL probe_write_inventory(BOOL final);
+/* Caller owns activation and stop. This loop only writes batches and consumes .stop. */
+BOOL probe_run_capture(const wchar_t *stop_path, DWORD flush_ms);
 
 #endif

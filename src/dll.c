@@ -20,6 +20,8 @@ __declspec(dllexport) DWORD WINAPI script_probe_status(void) {
 }
 
 static DWORD finish(LONG status) {
+    if (!logger_close())
+        status = 4;
     InterlockedExchange(&g_status, status);
     return (DWORD)status;
 }
@@ -34,18 +36,6 @@ static int flag_state(const wchar_t *path) {
 }
 
 static BOOL consume_flag(const wchar_t *path) { return DeleteFileW(path) && flag_state(path) == 0; }
-
-static BOOL dump_samples(unsigned *cursor) {
-    probe_sample sample;
-    while (probe_get_sample(*cursor, &sample)) {
-        if (!wlog("entry=%u function_object=%p instance=%p argc=%d state=%p result=%p args=%p error=%p", *cursor + 1,
-                  sample.function, sample.instance, sample.count, sample.state, sample.result,
-                  (const void *)sample.args, sample.error))
-            return FALSE;
-        ++*cursor;
-    }
-    return TRUE;
-}
 
 static DWORD WINAPI worker(LPVOID context) {
     (void)context;
@@ -66,7 +56,8 @@ static DWORD WINAPI worker(LPVOID context) {
     if (!logger_init(directory, L"avs-native-mod"))
         return finish(4);
     if (!wlog("attached pid=%lu; DLL pinned until process exit; candidate ABI not yet runtime-confirmed",
-              (unsigned long)GetCurrentProcessId()))
+              (unsigned long)GetCurrentProcessId()) ||
+        !logger_flush())
         return finish(4);
 
     n = GetModuleFileNameW(NULL, path, ARRAYSIZE(path));
@@ -101,14 +92,16 @@ static DWORD WINAPI worker(LPVOID context) {
     if (!probe_prepare(base + TARGET_RVA, target_entry, sizeof target_entry))
         return finish(4);
     if (!wlog("prepared DISABLED target=%p rva=0x%x; waiting up to 300 seconds for .enable or .stop", base + TARGET_RVA,
-              TARGET_RVA)) {
+              TARGET_RVA) ||
+        !logger_flush()) {
         probe_release_disabled();
         return finish(4);
     }
     InterlockedExchange(&g_status, 1);
     BOOL requested = FALSE;
     /* A bounded native watcher; no CLI subprocess polling. */
-    for (unsigned tick = 0; tick < 1200; ++tick) {
+    ULONGLONG waiting_since = GetTickCount64();
+    while (GetTickCount64() - waiting_since < 300000) {
         int stop = flag_state(stop_path);
         int enable = flag_state(enable_path);
         if (stop < 0 || enable < 0) {
@@ -134,31 +127,20 @@ static DWORD WINAPI worker(LPVOID context) {
         return finish(ok ? 5 : 4);
     }
     BOOL enabled = probe_enable();
-    unsigned cursor = 0;
-    BOOL healthy = enabled;
-    /* One capture only: first 64 entries, with a five-second maximum window. */
-    for (unsigned tick = 0; enabled && healthy && tick < 100; ++tick) {
-        healthy = dump_samples(&cursor);
-        int stop = flag_state(stop_path);
-        if (stop < 0)
-            healthy = FALSE;
-        if (stop == 1) {
-            healthy = consume_flag(stop_path) && healthy;
-            break;
-        }
-        if (probe_call_count() >= PROBE_SAMPLE_CAPACITY)
-            break;
-        Sleep(50);
+    BOOL healthy =
+        enabled &&
+        wlog("continuous inventory active: first-seen function keys; repeat counters; flush_ms=2000; stop via .stop") &&
+        logger_flush();
+    if (healthy) {
+        InterlockedExchange(&g_status, 7);
+        healthy = probe_run_capture(stop_path, 2000);
     }
     BOOL stopped = probe_stop();
-    /* A just-resumed in-flight detour may still be publishing its slot. */
-    for (unsigned tick = 0; stopped && healthy && cursor < PROBE_SAMPLE_CAPACITY && tick < 10; ++tick) {
-        healthy = dump_samples(&cursor);
-        Sleep(10);
-    }
-    wlog("capture end: stopped=%d logged=%u observed_at_report=%llu; DLL and trampoline RETAINED; do not eject",
-         stopped, cursor, (unsigned long long)probe_call_count());
-    return finish(healthy && stopped ? 2 : 4);
+    /* Freeze metadata separately: disable does not cancel in-flight originals. */
+    BOOL drained = probe_write_inventory(TRUE);
+    BOOL reported = wlog("capture end: stopped=%d inventory_flushed=%d; DLL and trampoline RETAINED; do not eject",
+                         stopped, drained);
+    return finish(healthy && stopped && drained && reported ? 2 : 4);
 }
 
 BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID reserved) {

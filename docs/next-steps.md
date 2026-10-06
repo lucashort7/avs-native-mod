@@ -1,19 +1,10 @@
 # Next steps
 
-The repository baseline preserves the tested short-capture behavior. Do not combine repository organization with a new live hook deployment or an unmeasured logger rewrite.
+The continuous inventory and persistent-handle batched logger passed native fixtures. No continuous-mode game capture has happened yet.
 
-## First change: continuous logging infrastructure
+## Next: validate continuous capture in the game
 
-Use the cr-srt logger as a local design reference, not as an unreviewed drop-in dependency.
-
-- Keep the file handle open on the writer thread rather than reopening it for each record.
-- Use a bounded queue or ring buffer between observation and writing. Never wait for disk I/O inside the detour.
-- Drain records in batches with checked WriteFile results, including partial-write handling.
-- Count and report dropped records when producers outpace the writer. Do not describe a lossy capture as every call logged.
-- Keep resource ownership explicit. Stop producers before the final drain, and retain hook code and trampoline according to the active-hook policy.
-- Preserve the caller's LastError and avoid heap allocation on the hot path where practical.
-
-Test queue saturation, concurrent producers, invalid output paths, write failures, shutdown, record integrity and dropped-record accounting before enabling continuous game capture. Measure capture overhead and ask about gameplay FPS rather than inferring it from process responsiveness. The short sandbox capture produced no player-reported FPS drop; that does not establish continuous-capture performance.
+Use a fresh process without retained probe modules and obtain separate deployment approval. Confirm the reviewed DLL, current PID, PE identity and disabled-ready log before enabling. Check first-seen rows, table saturation and stop totals against the actual screen or phase reported by the player. Measure capture overhead and ask about gameplay FPS; the earlier short captures do not establish continuous-capture performance. Never eject or replace a retained active-hook DLL.
 
 ## Then identify callbacks
 
@@ -21,4 +12,4 @@ Validate the installed build's function-object and StringName layouts before rea
 
 ## Build and tooling baseline
 
-CMake with Ninja now builds the native Windows x64 MinGW targets and runs the four fixtures through CTest. The LLVM format and tidy targets passed against project-owned files. Output and the compilation database live under build/cmake, separate from the earlier live-test DLL. Add another compiler or hosted CI only when the same native fixture suite can run there. Keep third-party notices, exclude game resources, and never ship the local injector as part of this baseline.
+CMake with Ninja builds the native Windows x64 MinGW targets and runs 18 fixtures through CTest. LLVM format and tidy passed against project-owned files. Output and the compilation database live under build/cmake, separate from the earlier live-test DLL. Add another compiler or hosted CI only when the same native fixture suite can run there. Keep third-party notices, exclude game resources, and never ship the local injector as part of this baseline.
