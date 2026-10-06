@@ -12,8 +12,8 @@ static volatile LONG64 g_calls __attribute__((aligned(8)));
 static probe_sample g_samples[PROBE_SAMPLE_CAPACITY];
 static volatile LONG g_ready[PROBE_SAMPLE_CAPACITY];
 
-static void *observe_call(void *result, void *function, void *instance,
-                          const void *const *args, int count, void *error, void *state) {
+static void *observe_call(void *result, void *function, void *instance, const void *const *args, int count, void *error,
+                          void *state) {
     DWORD last_error = GetLastError();
     LONG64 ticket = InterlockedIncrement64(&g_calls);
     /* No file I/O, allocation or object dereference inside the detour.
@@ -35,13 +35,15 @@ static BOOL status_ok(const char *stage, MH_STATUS status) {
 BOOL probe_prepare(void *target, const unsigned char *expected, size_t size) {
     unsigned char actual[64];
     SIZE_T read = 0;
-    if (g_initialized || !target || !expected || size < 16 || size > sizeof actual) return FALSE;
+    if (g_initialized || !target || !expected || size < 16 || size > sizeof actual)
+        return FALSE;
     if (!ReadProcessMemory(GetCurrentProcess(), target, actual, size, &read) || read != size ||
         memcmp(actual, expected, size) != 0) {
         wlog("script probe: entry mismatch; no hook created");
         return FALSE;
     }
-    if (!status_ok("initialize", MH_Initialize())) return FALSE;
+    if (!status_ok("initialize", MH_Initialize()))
+        return FALSE;
     g_initialized = TRUE;
     g_target = target;
     LPVOID trampoline = NULL;
@@ -55,27 +57,32 @@ BOOL probe_prepare(void *target, const unsigned char *expected, size_t size) {
 }
 
 BOOL probe_enable(void) {
-    if (!g_created || g_activation_attempted) return FALSE;
+    if (!g_created || g_activation_attempted)
+        return FALSE;
     /* Even a failed activation can leave execution uncertain: retain resources. */
     g_activation_attempted = TRUE;
     return status_ok("enable", MH_EnableHook(g_target));
 }
 
 BOOL probe_stop(void) {
-    if (!g_created) return TRUE;
+    if (!g_created)
+        return TRUE;
     MH_STATUS status = MH_DisableHook(g_target);
     wlog("script probe: stop => %s", MH_StatusToString(status));
     return status == MH_OK || status == MH_ERROR_DISABLED;
 }
 
 BOOL probe_release_disabled(void) {
-    if (g_activation_attempted) return FALSE;
+    if (g_activation_attempted)
+        return FALSE;
     if (g_created) {
-        if (!status_ok("remove never-enabled", MH_RemoveHook(g_target))) return FALSE;
+        if (!status_ok("remove never-enabled", MH_RemoveHook(g_target)))
+            return FALSE;
         g_created = FALSE;
     }
     if (g_initialized) {
-        if (!status_ok("uninitialize never-enabled", MH_Uninitialize())) return FALSE;
+        if (!status_ok("uninitialize never-enabled", MH_Uninitialize()))
+            return FALSE;
         g_initialized = FALSE;
     }
     g_target = NULL;

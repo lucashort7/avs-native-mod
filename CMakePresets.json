@@ -1,0 +1,28 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "mingw",
+      "displayName": "Native Windows x64 MinGW",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cmake",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    }
+  ],
+  "buildPresets": [ { "name": "mingw", "configurePreset": "mingw" } ],
+  "testPresets": [
+    {
+      "name": "mingw",
+      "configurePreset": "mingw",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": true }
+    }
+  ]
+}

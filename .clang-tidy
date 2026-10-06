@@ -1,0 +1,4 @@
+Checks: '-*,clang-analyzer-core.*,clang-analyzer-deadcode.*,clang-analyzer-unix.*'
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*[/\\](src|tests)[/\\].*'
+FormatStyle: file

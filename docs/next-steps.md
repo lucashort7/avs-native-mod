@@ -19,6 +19,6 @@ Test queue saturation, concurrent producers, invalid output paths, write failure
 
 Validate the installed build's function-object and StringName layouts before reading names. Correlate decoded script/function pairs with controlled pause, resume, menu, round and Safe Folder transitions. Record evidence separately from inferred meaning. Captured heap pointers are scoped to that process and object lifetime.
 
-## Build portability
+## Build and tooling baseline
 
-The initial build is the already exercised Windows MinGW path. Add another build system or hosted CI only when the same native fixture suite can run there. Keep third-party notices, exclude game resources, and never ship the local injector as part of this initial baseline.
+CMake with Ninja now builds the native Windows x64 MinGW targets and runs the four fixtures through CTest. The LLVM format and tidy targets passed against project-owned files. Output and the compilation database live under build/cmake, separate from the earlier live-test DLL. Add another compiler or hosted CI only when the same native fixture suite can run there. Keep third-party notices, exclude game resources, and never ship the local injector as part of this baseline.

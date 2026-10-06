@@ -7,8 +7,8 @@
 /* Explicit machine-level ABI candidate, not a reconstructed C++ class.
  * RCX is return storage, RDX the function object, R8 the instance, R9 args.
  * The remaining three arguments occupy the entry stack. Live validation pending. */
-typedef void *(*script_call_fn)(void *result, void *function, void *instance,
-                               const void *const *args, int count, void *error, void *state);
+typedef void *(*script_call_fn)(void *result, void *function, void *instance, const void *const *args, int count,
+                                void *error, void *state);
 
 #define PROBE_SAMPLE_CAPACITY 64u
 

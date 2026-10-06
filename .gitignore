@@ -56,6 +56,7 @@ dkms.conf
 
 # Build output and local runtime controls
 /build/
+/CMakeUserPresets.json
 *.log
 *.enable
 *.stop

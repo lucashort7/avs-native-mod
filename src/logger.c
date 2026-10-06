@@ -23,19 +23,22 @@ BOOL wlog(const char *fmt, ...) {
     wchar_t path[MAX_PATH];
     char buf[512];
     SYSTEMTIME t;
-    if (FAILED(StringCchPrintfW(path, ARRAYSIZE(path), L"%ls%ls.log", g_dirpath, g_name))) goto done;
+    if (FAILED(StringCchPrintfW(path, ARRAYSIZE(path), L"%ls%ls.log", g_dirpath, g_name)))
+        goto done;
     GetLocalTime(&t);
     int prefix =
         snprintf(buf, sizeof(buf), "%04u-%02u-%02u %02u:%02u:%02u ", (unsigned int)t.wYear, (unsigned int)t.wMonth,
                  (unsigned int)t.wDay, (unsigned int)t.wHour, (unsigned int)t.wMinute, (unsigned int)t.wSecond);
-    if (prefix < 0 || (size_t)prefix >= sizeof(buf) - 2) goto done;
+    if (prefix < 0 || (size_t)prefix >= sizeof(buf) - 2)
+        goto done;
     /* Reserve two bytes for CRLF; vsnprintf also reserves its null terminator. */
     size_t capacity = sizeof(buf) - (size_t)prefix - 2;
     va_list ap;
     va_start(ap, fmt);
     int message = vsnprintf(buf + prefix, capacity, fmt, ap);
     va_end(ap);
-    if (message < 0) goto done;
+    if (message < 0)
+        goto done;
     size_t length = (size_t)prefix + ((size_t)message < capacity ? (size_t)message : capacity - 1);
     buf[length++] = '\r';
     buf[length++] = '\n';
@@ -46,7 +49,8 @@ BOOL wlog(const char *fmt, ...) {
     if (h != INVALID_HANDLE_VALUE) {
         DWORD written = 0;
         success = WriteFile(h, buf, (DWORD)length, &written, NULL) && written == (DWORD)length;
-        if (!CloseHandle(h)) success = FALSE;
+        if (!CloseHandle(h))
+            success = FALSE;
     }
     ReleaseSRWLockExclusive(&g_log_lock);
 done:
