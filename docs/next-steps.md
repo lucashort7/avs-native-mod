@@ -1,14 +1,14 @@
 # Next steps
 
-The cooperative bridge/payload architecture passed native fixtures. See validation/cooperative-reload.md for commands, coverage and limits. No bridge/payload game capture has happened yet.
+The cooperative bridge/payload architecture passed native fixtures and ran in AVS03Pro on October 6 and 7, 2026. See validation/cooperative-reload.md for fixture commands and limits; the October 6 full-run evidence is recorded in the shared AVS research notes. On October 7, two short captures tested first-call script/function labels from the C payload. The first recorded 527 labeled objects, 257,567 calls and zero untracked calls; the second recorded 427 labeled objects, 82,118 calls and zero untracked calls. No label was unreadable in either run. Each payload cooperatively unmapped while the bridge remained in the game.
 
-## Next: validate continuous capture in the game
+## Next: validate labeling across game phases
 
-Review the resident bridge and synchronous payload contract together before deployment. Use a fresh process without retained probe modules and obtain separate approval. Confirm both reviewed DLLs, current PID, PE identity and the bridge's disabled-ready log before enabling. Check first-seen rows, saturation and stop totals against the player's screen or phase. Verify actual payload module absence before replacing it. Never eject or replace the bridge. Measure gameplay FPS; fixture results and earlier short captures do not establish game performance or ABI correctness.
+With the existing bridge, enable the reloadable payload for a controlled menu, pause and resume sequence. Confirm fresh named `first_seen` rows against the screen and recovered scripts, and ask the player about FPS during the first-call burst. The logger's timestamp is the flush time, not call entry. Verify payload absence before replacing it; never eject or replace the bridge in this process. Pointer reuse may still merge different function objects that occupy the same address later in one capture.
 
-## Then identify callbacks
+## Then identify the Coin producer
 
-Validate the installed build's function-object and StringName layouts before reading names. Correlate decoded script/function pairs with controlled pause, resume, menu, round and Safe Folder transitions. Record evidence separately from inferred meaning. Captured heap pointers are scoped to that process and object lifetime.
+The macro-transition methods have been correlated with a marked full run. The accumulator owner and the arithmetic producer of one Coin pickup remain unverified. Use a controlled pickup and a targeted probe rather than attributing generic script-call volume to Coin arithmetic.
 
 ## Build and tooling baseline
 

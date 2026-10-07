@@ -20,11 +20,11 @@ target_include_directories(minhook SYSTEM PUBLIC vendor/minhook/include)
 target_compile_options(minhook PRIVATE -O2)
 
 # Historical retention implementation is linked only into the legacy fixture.
-add_library(probe_core OBJECT src/probe.c src/logger.c src/inventory.c)
+add_library(probe_core OBJECT src/probe.c src/logger.c src/inventory.c src/function_name.c)
 target_include_directories(probe_core PUBLIC src)
 target_link_libraries(probe_core PUBLIC minhook)
 
-add_library(avs-native-mod SHARED src/dll.c src/inventory.c src/logger.c)
+add_library(avs-native-mod SHARED src/dll.c src/inventory.c src/function_name.c src/logger.c)
 target_include_directories(avs-native-mod PRIVATE src)
 set_target_properties(avs-native-mod PROPERTIES PREFIX "")
 add_library(avs-bridge SHARED src/bridge.c src/logger.c)
@@ -36,7 +36,7 @@ target_include_directories(avs-bridge-fixture PRIVATE src)
 target_link_libraries(avs-bridge-fixture PRIVATE minhook)
 target_compile_definitions(avs-bridge-fixture PRIVATE AVS_BRIDGE_TESTING)
 set_target_properties(avs-bridge-fixture PROPERTIES PREFIX "")
-add_library(avs-payload-fixture SHARED src/dll.c src/inventory.c src/logger.c)
+add_library(avs-payload-fixture SHARED src/dll.c src/inventory.c src/function_name.c src/logger.c)
 target_include_directories(avs-payload-fixture PRIVATE src)
 target_compile_definitions(avs-payload-fixture PRIVATE AVS_PAYLOAD_TESTING AVS_LOGGER_TESTING AVS_PAYLOAD_GENERATION=2)
 set_target_properties(avs-payload-fixture PROPERTIES PREFIX "")
@@ -54,7 +54,7 @@ add_dependencies(bridge_fixture avs-bridge-fixture avs-native-mod avs-payload-fi
 add_executable(logger_fixture tests/logger_fixture.c src/logger.c)
 target_include_directories(logger_fixture PRIVATE src)
 target_compile_definitions(logger_fixture PRIVATE AVS_LOGGER_TESTING)
-add_executable(inventory_fixture tests/inventory_fixture.c src/inventory.c)
+add_executable(inventory_fixture tests/inventory_fixture.c src/inventory.c src/function_name.c)
 target_include_directories(inventory_fixture PRIVATE src)
 target_compile_definitions(inventory_fixture PRIVATE INVENTORY_CAPACITY=8u)
 
@@ -116,10 +116,10 @@ if(BUILD_TESTING)
 endif()
 
 set(AVS_PROJECT_FILES
-    src/bridge.c src/dll.c src/payload.h src/probe.c src/probe.h src/logger.c src/logger.h src/inventory.c src/inventory.h
+    src/bridge.c src/dll.c src/payload.h src/probe.c src/probe.h src/logger.c src/logger.h src/inventory.c src/inventory.h src/function_name.c src/function_name.h
     tests/bridge_fixture.c tests/payload_loader_fixture.c tests/hook_fixture.c tests/loader_fixture.c tests/logger_fixture.c tests/inventory_fixture.c
 )
-set(AVS_ANALYSIS_FILES src/bridge.c src/dll.c src/probe.c src/logger.c src/inventory.c tests/bridge_fixture.c tests/payload_loader_fixture.c tests/hook_fixture.c tests/loader_fixture.c tests/logger_fixture.c tests/inventory_fixture.c)
+set(AVS_ANALYSIS_FILES src/bridge.c src/dll.c src/probe.c src/logger.c src/inventory.c src/function_name.c tests/bridge_fixture.c tests/payload_loader_fixture.c tests/hook_fixture.c tests/loader_fixture.c tests/logger_fixture.c tests/inventory_fixture.c)
 find_program(AVS_CLANG_FORMAT NAMES clang-format HINTS "$ENV{ProgramFiles}/LLVM/bin")
 find_program(AVS_CLANG_TIDY NAMES clang-tidy HINTS "$ENV{ProgramFiles}/LLVM/bin")
 

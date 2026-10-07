@@ -1,12 +1,37 @@
 #include "payload.h"
 #include "inventory.h"
 #include "logger.h"
+#include <stdio.h>
+#include <string.h>
 
 static BOOL g_logged[INVENTORY_CAPACITY];
 static LONG64 g_reported[INVENTORY_CAPACITY];
 static unsigned long long g_interval;
 static BOOL g_failed;
 static BOOL g_started;
+static BOOL g_argument_logged[ARG_SAMPLE_CAPACITY];
+static BOOL g_override_logged;
+
+static void format_argument(unsigned index, const argument_value *value, char *text, size_t capacity) {
+    if (!value->readable) {
+        snprintf(text, capacity, "arg%u_type=<unreadable> arg%u_data=<unreadable> arg%u_value=<unreadable>", index,
+                 index, index);
+    } else if (value->type == 1) {
+        snprintf(text, capacity, "arg%u_type=1 arg%u_data=%016llx arg%u_value=%s", index, index,
+                 (unsigned long long)value->data, index, value->data ? "true" : "false");
+    } else if (value->type == 2) {
+        snprintf(text, capacity, "arg%u_type=2 arg%u_data=%016llx arg%u_value=%lld", index, index,
+                 (unsigned long long)value->data, index, (long long)value->data);
+    } else if (value->type == 3) {
+        double number;
+        memcpy(&number, &value->data, sizeof number);
+        snprintf(text, capacity, "arg%u_type=3 arg%u_data=%016llx arg%u_value=%.17g", index, index,
+                 (unsigned long long)value->data, index, number);
+    } else {
+        snprintf(text, capacity, "arg%u_type=%u arg%u_data=%016llx arg%u_value=<unsupported>", index, value->type,
+                 index, (unsigned long long)value->data, index);
+    }
+}
 #ifndef AVS_PAYLOAD_GENERATION
 #define AVS_PAYLOAD_GENERATION 1
 #endif
@@ -40,7 +65,8 @@ __declspec(dllexport) BOOL WINAPI avs_payload_start(const wchar_t *directory, co
     return ok;
 }
 
-/* Observation only. Never call the target, original, bridge or another observer. */
+/* The one-shot Coin probe may alter an argument before the bridge forwards the
+ * original call. Never call the target, original, bridge or another observer. */
 __declspec(dllexport) void WINAPI avs_payload_observe(const probe_sample *sample) {
     DWORD saved = GetLastError();
 #ifdef AVS_PAYLOAD_TESTING
@@ -63,8 +89,10 @@ __declspec(dllexport) BOOL WINAPI avs_payload_flush(void) {
         if (g_logged[i] || !inventory_get(i, &entry))
             continue;
         probe_sample *s = &entry.first;
-        ok = wlog("first_seen function_object=%p instance=%p argc=%d state=%p result=%p args=%p error=%p", s->function,
-                  s->instance, s->count, s->state, s->result, (const void *)s->args, s->error);
+        ok = wlog("first_seen function_object=%p instance=%p argc=%d state=%p result=%p args=%p error=%p name=%s "
+                  "source=%s",
+                  s->function, s->instance, s->count, s->state, s->result, (const void *)s->args, s->error,
+                  entry.label.name, entry.label.source);
         if (ok)
             g_logged[i] = TRUE;
     }
@@ -77,6 +105,25 @@ __declspec(dllexport) BOOL WINAPI avs_payload_flush(void) {
                   entry.first.function, (unsigned long long)delta);
         if (ok)
             g_reported[i] = entry.calls;
+    }
+    for (unsigned i = 0; ok && i < ARG_SAMPLE_CAPACITY; ++i) {
+        argument_sample snapshot;
+        if (g_argument_logged[i] || !inventory_argument_get(i, &snapshot))
+            continue;
+        char first[96], second[96];
+        format_argument(0, &snapshot.value[0], first, sizeof first);
+        format_argument(1, &snapshot.value[1], second, sizeof second);
+        ok = wlog("arg_sample seq=%u function_object=%p %s %s", i + 1, snapshot.function, first, second);
+        if (ok)
+            g_argument_logged[i] = TRUE;
+    }
+    coin_override override;
+    if (ok && !g_override_logged && inventory_coin_override_get(&override)) {
+        ok = wlog("coin_x10 target=game_events.emit_currency_collected function_object=%p original=%.17g "
+                  "multiplied=%.17g success=%d",
+                  override.function, override.original, override.multiplied, override.success);
+        if (ok)
+            g_override_logged = TRUE;
     }
     if (ok)
         ok = logger_flush();
